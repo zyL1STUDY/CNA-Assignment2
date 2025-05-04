@@ -2,6 +2,7 @@
 #include "emulator.h"
 #include "sr.h"
 extern float time;
+#define simtime time 
 
 /*Protocol Configuration*/
 #define RTT 16.0
@@ -55,7 +56,7 @@ void A_output(struct msg message) {
 
     if (TRACE > 0) printf("----A: sent packet %d\n", pkt.seqnum);
     tolayer3(A, pkt);
-    timer_expiry[nextseqnum] = time + RTT;
+    timer_expiry[nextseqnum] = simtime + RTT;
 
     if (!timer_active) {
         starttimer(A, RTT);
@@ -90,8 +91,8 @@ void A_input(struct pkt packet) {
     timer_active = 0;
     for (i = 0; i < SEQSPACE; i++) {
         seq = (base + i) % SEQSPACE;
-        if (!acked[seq] && timer_expiry[seq] > time) {
-            starttimer(A, timer_expiry[seq] - time);
+        if (!acked[seq] && timer_expiry[seq] > simtime) {
+            starttimer(A, timer_expiry[seq] - simtime);
             timer_active = 1;
             break;
         }
@@ -113,10 +114,10 @@ void A_timerinterrupt(void) {
     
     for (i = 0; i < SEQSPACE; i++) {
         int seq = (base + i) % SEQSPACE;
-        if (!acked[seq] && time >= timer_expiry[seq]) {
+        if (!acked[seq] && simtime >= timer_expiry[seq]) {
             tolayer3(A, window[seq]);
             packets_resent++;
-            timer_expiry[seq] = time + RTT;
+            timer_expiry[seq] = simtime + RTT;
             if (!timer_active) {
                 starttimer(A, RTT);
                 timer_active = 1;
