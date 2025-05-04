@@ -3,16 +3,18 @@
 #include "sr.h"
 extern float time;
 
-// ========== Protocol Configuration ==========
+/*Protocol Configuration*/
 #define RTT 16.0
 #define WINDOWSIZE 6
 #define SEQSPACE 12
 #define NOTINUSE (-1)
 
-// ========== Checksum Functions ==========
+/*Checksum Functions*/
 int ComputeChecksum(struct pkt packet) {
-    int checksum = packet.seqnum + packet.acknum;
     int i;
+    
+        int checksum = packet.seqnum + packet.acknum;
+    
     for (i = 0; i < 20; i++) {
         checksum += (int)(packet.payload[i]);
     }
@@ -23,7 +25,7 @@ int IsCorrupted(struct pkt packet) {
     return packet.checksum != ComputeChecksum(packet);
 }
 
-// ========== Sender State ==========
+/*Sender State*/
 static struct pkt window[SEQSPACE];
 static int acked[SEQSPACE];
 static float timer_expiry[SEQSPACE];
@@ -31,16 +33,16 @@ static int base = 0;
 static int nextseqnum = 0;
 static int timer_active = 0;
 
-// ========== A_output ==========
+/*A_output*/
 void A_output(struct msg message) {
+    struct pkt pkt;
+    int i;
+
     if (((nextseqnum + SEQSPACE - base) % SEQSPACE) >= WINDOWSIZE) {
         if (TRACE > 0) printf("----A: Window full, drop message\n");
         window_full++;
         return;
     }
-
-    struct pkt pkt;
-    int i;
 
     pkt.seqnum = nextseqnum;
     pkt.acknum = NOTINUSE;
@@ -63,14 +65,18 @@ void A_output(struct msg message) {
     nextseqnum = (nextseqnum + 1) % SEQSPACE;
 }
 
-// ========== A_input ==========
+/*A_input*/
 void A_input(struct pkt packet) {
+    int ack;
+    int i;
+    int seq;
+
     if (IsCorrupted(packet)) {
         if (TRACE > 0) printf("----A: received corrupted ACK\n");
         return;
     }
 
-    int ack = packet.acknum;
+        ack = packet.acknum;
     if (TRACE > 0) printf("----A: ACK %d received and marked\n", ack);
 
     if (!acked[ack]) {
@@ -79,12 +85,11 @@ void A_input(struct pkt packet) {
         total_ACKs_received++;
     }
 
-    // Restart timer for the next outstanding packet
-    int i;
+    /*Restart timer for the next outstanding packet*/
     stoptimer(A);
     timer_active = 0;
     for (i = 0; i < SEQSPACE; i++) {
-        int seq = (base + i) % SEQSPACE;
+        seq = (base + i) % SEQSPACE;
         if (!acked[seq] && timer_expiry[seq] > time) {
             starttimer(A, timer_expiry[seq] - time);
             timer_active = 1;
@@ -92,18 +97,20 @@ void A_input(struct pkt packet) {
         }
     }
 
-    // slide window
+    /*slide window*/
     while (acked[base]) {
         base = (base + 1) % SEQSPACE;
     }
 }
 
-// ========== A_timerinterrupt ==========
+/*A_timerinterrupt*/
 void A_timerinterrupt(void) {
+    int i;
+    
     if (TRACE > 0) printf("----A: timeout event triggered\n");
     timer_active = 0;
 
-    int i;
+    
     for (i = 0; i < SEQSPACE; i++) {
         int seq = (base + i) % SEQSPACE;
         if (!acked[seq] && time >= timer_expiry[seq]) {
@@ -118,7 +125,7 @@ void A_timerinterrupt(void) {
     }
 }
 
-// ========== A_init ==========
+/*A_init*/
 void A_init(void) {
     int i;
     for (i = 0; i < SEQSPACE; i++) {
@@ -130,14 +137,16 @@ void A_init(void) {
     timer_active = 0;
 }
 
-// ========== Receiver State ==========
+/*Receiver State*/
 static struct pkt recv_pkt[SEQSPACE];
 static int received[SEQSPACE];
 static int expected = 0;
 
-// ========== B_input ==========
+/*B_input*/
 void B_input(struct pkt packet) {
     int i;
+    
+    
     int seq = packet.seqnum;
     struct pkt ackpkt;
 
@@ -172,7 +181,7 @@ void B_input(struct pkt packet) {
     if (TRACE > 0) printf("----B: sent ACK %d\n", ackpkt.acknum);
 }
 
-// ========== B_init ==========
+/*B_init*/
 void B_init(void) {
     int i;
     for (i = 0; i < SEQSPACE; i++) {
@@ -181,12 +190,10 @@ void B_init(void) {
     expected = 0;
 }
 
-// ========== B_output ==========
 void B_output(struct msg message) {
-    // Selective Repeat is unidirectional, so B_output is not used
+    /* not used */
 }
 
-// ========== B_timerinterrupt ==========
 void B_timerinterrupt(void) {
-    // Selective Repeat receiver does not use a timer
+    /* not used */
 }
