@@ -9,10 +9,6 @@
 #define NOTINUSE -1
 #define BUFFER_INDEX(seqnum) ((seqnum) % SEQSPACE)
 
-static struct pkt recv_buffer[SEQSPACE];
-static int       recv_has[SEQSPACE];
-static int       recv_expected;
-
 /* ---------- Packet Utilities ---------- */
 int ComputeChecksum(struct pkt packet) {
     int checksum = packet.seqnum + packet.acknum;
@@ -39,7 +35,7 @@ void A_output(struct msg message) {
     int i;
     if (((nextseqnum - base + SEQSPACE) % SEQSPACE) >= WINDOWSIZE) {
         if (TRACE > 0)
-            printf("----A: New message arrives, send window is full\n");
+            printf("----A: New message arrives, send window is full, drop messge\n");
         window_full++;
         return;
     }
@@ -96,7 +92,6 @@ void A_input(struct pkt packet) {
             if (TRACE>0) 
                 printf("----A: ACK %d is not a duplicate\n", ack);
             stoptimer(A);
-            timer_active = 0;
 
             /* slide base */
             while (acked[base]) {
@@ -153,49 +148,43 @@ static int received[SEQSPACE];
 static int expected = 0;
 
 void B_input(struct pkt packet) {
-    int seq = packet.seqnum;
+    int seq;
     struct pkt ackpkt;
+    seq = packet.seqnum;
 
-    if (IsCorrupted(packet)) {
+    if (!IsCorrupted(packet) && seq == expected) {
         if (TRACE > 0)
-            printf("----B: received corrupted packet, drop it\n");
-        return;
+            printf("----B: packet %d is correctly received, send ACK!\n", seq);
+        packets_received++;
+        tolayer5(B, packet.payload);
+        expected = (expected + 1) % SEQSPACE;
+    } else {
+        if (TRACE > 0)
+            printf("----B: packet corrupted or not expected sequence number, resend ACK!\n");
     }
 
-    ackpkt.seqnum  = NOTINUSE;
-    ackpkt.acknum  = seq;
+    /* build ACK */
+    ackpkt.seqnum = NOTINUSE;
+    ackpkt.acknum  = packet.seqnum; 
     memset(ackpkt.payload, '0', sizeof ackpkt.payload);
     ackpkt.checksum = ComputeChecksum(ackpkt);
     tolayer3(B, ackpkt);
-    if (TRACE > 0)
-        printf("----B: sent ACK %d\n", seq);
 
-    int win_end = (recv_expected + WINDOWSIZE) % SEQSPACE;
-    int in_window;
-    if (recv_expected < win_end) {
-        in_window = (seq >= recv_expected && seq < win_end);
-    } else {
-        in_window = (seq >= recv_expected || seq < win_end);
-    }
-
-    if (in_window && !recv_has[seq]) {
-        recv_buffer[seq] = packet;   
-        recv_has[seq]   = 1;         
-        if (TRACE > 0)
-            printf("----B: buffered packet %d\n", seq);
-    }
-
-    while (recv_has[recv_expected]) {
-        tolayer5(B, recv_buffer[recv_expected].payload);
-        packets_received++;
-        if (TRACE > 0)
-            printf("----B: delivered packet %d to application\n", recv_expected);
-        recv_has[recv_expected] = 0;
-        recv_expected = (recv_expected + 1) % SEQSPACE;
-    }
 }
 
+void B_init(void) {
+    int i;
+    for (i = 0; i < SEQSPACE; i++) {
+        received[i] = 0;
+    }
+    expected = 0;
+}
+
+void B_output(struct msg message) { 
+    /* not used */ 
+}
 
 void B_timerinterrupt(void) { 
     /* not used */ 
 }
+
