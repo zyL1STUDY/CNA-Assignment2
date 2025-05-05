@@ -71,49 +71,43 @@ void A_input(struct pkt packet) {
     int in_window;
     
     /* determine if ack is in [base, base+WINDOWSIZE) */
-    if (win_start < win_end) {
-        in_window = (ack >= win_start && ack < win_end);
-    } else {
-        in_window = (ack >= win_start || ack < win_end);
-    }
+    
     if (IsCorrupted(packet)) {
         if (TRACE>0) printf("----A: corrupted ACK is received, do nothing!\n");
         return;
     }
-
-    stoptimer(A);
-    timer_active = 0;
-
+    
     if (TRACE>0) 
         printf("----A: uncorrupted ACK %d is received\n", ack);
     total_ACKs_received++;
-    
-    if (in_window) {
-        int idx = BUFFER_INDEX(ack);
-        if (!acked[idx]) {
-            acked[idx] = 1;
+
+    if (win_start < win_end)
+        in_window = (ack >= win_start && ack < win_end);
+    else
+        in_window = (ack >= win_start || ack < win_end);
+
+    if (in_window && !acked[ack]) {
+            acked[ack] = 1;
             new_ACKs++;
             if (TRACE>0) 
                 printf("----A: ACK %d is not a duplicate\n", ack);
+            stoptimer(A);
 
             /* slide base */
-            while (acked[BUFFER_INDEX(base)]) {
-                acked[BUFFER_INDEX(base)] = 0;
+            while (acked[base]) {
+                acked[base] = 0;
                 base = (base + 1) % SEQSPACE;
             }
+            if (base != nextseqnum) {
+                starttimer(A, RTT);
+            }
         } 
-        else {
-            /* 4) 重复 ACK */
-            if (TRACE>0) printf("----A: duplicate ACK received, do nothing!\n");
-        }
+        else if (in_window && acked[ack]) {
+        /* 重复 ACK */
+            if (TRACE>0) 
+                printf("----A: ACK %d is a duplicate, do nothing!\n", ack);
     }
-    /* else：out-of-window 的 ACK 也不重启定时器 */
-
-    /* 5) 如果窗口还不空，才重启定时器监视下一个最老包 */
-    if (base != nextseqnum) {
-        starttimer(A, RTT);
-        timer_active = 1;
-    }
+    /* out-of-window 的 ACK 什么也不做 */
 }
 
 void A_timerinterrupt(void) {
